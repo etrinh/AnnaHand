@@ -54,7 +54,7 @@ int64_t otaOnTimer = 0;
 class Light
 {
   public:
-    enum { EEPROM_SIZE = 256 };
+    enum { EEPROM_SIZE = 64 };
     Light(String name, int pin, int baseEEPROM): m_name(name), m_pin(pin), m_baseAddr(baseEEPROM)
     {
       pinMode(pin, OUTPUT);
@@ -144,7 +144,7 @@ class Light
 static std::vector<Light> Lights;
 
 static void default_handler() {
-  EEPROM.begin(Light::EEPROM_SIZE);
+  EEPROM.begin(Lights.size() * Light::EEPROM_SIZE);
   for (Light& l : Lights) {
     String arg;
     if ((arg = server.arg(l.name())) != "") {
@@ -393,14 +393,6 @@ static void update_handler() {
 }
 #endif
 
-String ip2Str(IPAddress ip) {
-  String s;
-  for (int i = 0; i < 4; i++) {
-    s += i  ? "." + String(ip[i]) : String(ip[i]);
-  }
-  return s;
-}
-
 static void usage_handler() {
   String info =
     "<html>"
@@ -441,7 +433,7 @@ static void status_handler() {
                 "\"version\":\"" VERSION "\","
                 "\"ssid\":\"" + WiFi.SSID() + "\","
                 "\"rssi\":\"" + String(WiFi.RSSI()) + "\","
-                "\"ip\":\"" + ip2Str(WiFi.localIP()) + "\","
+                "\"ip\":\"" + WiFi.localIP().toString() + "\","
                 "\"mac\":\"" + WiFi.macAddress() + "\","
                 "\"chipId\":\"" + ESP.getChipId() + "\","
                 "\"lights\":{" + lights + "},"
@@ -456,8 +448,8 @@ static void status_handler() {
 }
 
 static void info_handler() {
-  String info =
-    "<html>"
+  static const __FlashStringHelper* info =
+    F("<html>"
       "<head>"
         "<title>" TAG "</title>"
         "<script type=\"text/javascript\">"
@@ -535,7 +527,7 @@ static void info_handler() {
         "</table>"
         "<a href=\"" URI_USAGE "\">API Usage</a>"
       "</body>"
-    "</html>";
+    "</html>");
   server.send(200, "text/html", info);
 }
 
@@ -553,13 +545,13 @@ static void startServer() {
 #endif
 #ifdef ENABLE_UPDATE
   server.on ( URI_UPDATE, HTTP_POST, []() {
-    String html = "<html>"
-                    "<head>"
-                      "<title>" TAG " - OTA</title>" +
-                      (Update.hasError() ? "<meta http-equiv=\"refresh\" content=\"" + String(OTA_REBOOT_TIMER + 1) + "; url=/\">" : "") +
-                    "</head>"
-                    "<body>" + (Update.hasError() ? "FAIL" : "OK") + "</body>"
-                  "</html>";
+        String html = "<html>"
+                        "<head>"
+                        "<title>" TAG " - OTA</title>" +
+                        (!Update.hasError() ? "<meta http-equiv=\"refresh\" content=\"" + String(OTA_REBOOT_TIMER + 1) + "; url=/\">" : "") +
+                        "</head>"
+                        "<body>Update " + (Update.hasError() ? "failed" : "succeeded") + "</body>"
+                    "</html>";
     server.sendHeader("Connection", "close");
     server.send(200, "text/html", html);
     requestReboot();
@@ -581,7 +573,7 @@ void setup() {
   analogWriteFreq(1000);
   pinMode(PIN_SENSOR, PIN_SENSOR==16?INPUT_PULLDOWN_16:INPUT);
 
-  EEPROM.begin(Light::EEPROM_SIZE);
+  EEPROM.begin(5 * Light::EEPROM_SIZE);
   Lights.push_back(Light("bulb", PIN_LED_HAND_LIGHT, 0));
   Lights.push_back(Light("red", PIN_LED_HAND_RGBW_R, 64));
   Lights.push_back(Light("green", PIN_LED_HAND_RGBW_G, 128));
